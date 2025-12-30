@@ -1,36 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-
 export async function POST(request: NextRequest) {
     try {
-        const { category, previousWords } = await request.json();
+        const { category, categories, previousWords } = await request.json();
 
-        if (!category || typeof category !== "string") {
+        // Support both single category (string) and multiple categories (array)
+        let categoriesList: string[];
+        if (categories && Array.isArray(categories) && categories.length > 0) {
+            categoriesList = categories;
+        } else if (category && typeof category === "string") {
+            categoriesList = [category];
+        } else {
             return NextResponse.json(
-                { error: "Category is required and must be a string" },
+                { error: "Category or categories are required" },
                 { status: 400 }
             );
         }
 
-        if (!process.env.OPENAI_API_KEY) {
+        // Check API key with better error messaging
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            console.error("OPENAI_API_KEY is missing from environment variables");
             return NextResponse.json(
-                { error: "OpenAI API key not configured" },
+                { error: "OpenAI API key not configured", details: "Environment variable OPENAI_API_KEY is not set" },
                 { status: 500 }
             );
         }
+
+        // Initialize client inside the function to ensure env vars are available
+        const client = new OpenAI({
+            apiKey: apiKey,
+        });
 
         const excludeWordsText = previousWords && previousWords.length > 0
             ? `Exclude these words: ${previousWords.join(", ")}`
             : "";
 
+        const categoryText = categoriesList.length === 1
+            ? `Category: "${categoriesList[0]}"`
+            : `Categories: ${categoriesList.map(c => `"${c}"`).join(", ")} (choose a word from any of these categories)`;
+
         const prompt = `You are a Game Content Engine for a social deduction game like "Undercover."
 Your Goal: Generate a challenging secret word and a lateral thinking hint.
 
-Category: "${category}"
+${categoryText}
 ${excludeWordsText}
 
 ---
@@ -62,18 +76,30 @@ Return ONLY a raw JSON string.
 - Do NOT use markdown code blocks (no \`\`\`)
 - Do NOT add conversational text.
 
-{"word": "String", "category": "${category}", "hint": "String"}`;
+{"word": "String", "category": "String", "hint": "String"}`;
 
-        const response = await client.responses.create({
-            model: "gpt-5.2",
-            input: prompt,
-            reasoning: { effort: "medium" },
-            text: { verbosity: "low" },
-            temperature: 1.1,
-            top_p: 0.9,
-        });
+        let response;
+        try {
+            response = await client.responses.create({
+                model: "gpt-5.2",
+                input: prompt,
+                reasoning: { effort: "medium" },
+                text: { verbosity: "low" },
+                temperature: 1.1,
+                top_p: 0.9,
+            });
+        } catch (apiError: any) {
+            console.error("OpenAI API call failed:", {
+                message: apiError?.message,
+                status: apiError?.status,
+                code: apiError?.code,
+                type: apiError?.type,
+                error: apiError
+            });
+            throw new Error(`OpenAI API error: ${apiError?.message || "Unknown error"}`);
+        }
 
-        const content = response.output_text;
+        const content = response?.output_text;
 
         if (!content) {
             return NextResponse.json(
@@ -100,13 +126,27 @@ Return ONLY a raw JSON string.
 
         return NextResponse.json({
             word: result.word,
-            category: result.category || category,
+            category: result.category || categoriesList[0],
             hint: result.hint,
         });
     } catch (error) {
         console.error("Error generating word:", error);
+
+        // Provide more detailed error information in development
+        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const errorDetails = process.env.NODE_ENV === "development"
+            ? {
+                message: errorMessage,
+                stack: error instanceof Error ? error.stack : undefined,
+                name: error instanceof Error ? error.name : undefined
+            }
+            : { message: errorMessage };
+
         return NextResponse.json(
-            { error: "Internal server error" },
+            {
+                error: "Internal server error",
+                details: errorDetails
+            },
             { status: 500 }
         );
     }

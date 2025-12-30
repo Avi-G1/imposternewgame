@@ -31,7 +31,7 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
   const [playerNames, setPlayerNames] = useState<string[]>([]);
   const [showNameEditor, setShowNameEditor] = useState(false);
   const [wordSource, setWordSource] = useState<"preset" | "custom" | "ai">("preset");
-  const [selectedCategory, setSelectedCategory] = useState<WordCategory>(wordCategories[0]);
+  const [selectedCategories, setSelectedCategories] = useState<WordCategory[]>([wordCategories[0]]);
   const [customWord, setCustomWord] = useState("");
   const [customHint, setCustomHint] = useState("");
   const [hintMode, setHintMode] = useState<HintMode>({ showCategory: false, showHint: true });
@@ -174,8 +174,14 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
     let aiHint: string | undefined;
 
     if (wordSource === "preset") {
-      word = getRandomWord(selectedCategory);
-      categoryName = selectedCategory.name;
+      if (selectedCategories.length === 0) {
+        alert("Please select at least one category");
+        return;
+      }
+      // Randomly select a category from the selected ones
+      const randomCategory = selectedCategories[Math.floor(Math.random() * selectedCategories.length)];
+      word = getRandomWord(randomCategory);
+      categoryName = randomCategory.name;
     } else if (wordSource === "custom") {
       word = customWord.trim();
       categoryName = "Custom";
@@ -279,24 +285,72 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
             </div>
 
             {wordSource === "preset" && (
-              <Select
-                value={selectedCategory.name}
-                onValueChange={(value) => {
-                  const category = wordCategories.find((cat) => cat.name === value);
-                  if (category) setSelectedCategory(category);
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {wordCategories.map((category) => (
-                    <SelectItem key={category.name} value={category.name}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Select one or more categories (word will be randomly chosen from selected categories)
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedCategories(wordCategories)}
+                      className="h-7 text-xs"
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (selectedCategories.length > 1) {
+                          setSelectedCategories([wordCategories[0]]);
+                        }
+                      }}
+                      className="h-7 text-xs"
+                      disabled={selectedCategories.length <= 1}
+                    >
+                      Deselect All
+                    </Button>
+                  </div>
+                </div>
+                <Card>
+                  <CardContent className="pt-4 max-h-60 overflow-y-auto space-y-2">
+                    {wordCategories.map((category) => {
+                      const isSelected = selectedCategories.some(cat => cat.name === category.name);
+                      return (
+                        <div key={category.name} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            id={`category-${category.name}`}
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedCategories([...selectedCategories, category]);
+                              } else {
+                                // Don't allow deselecting all categories
+                                if (selectedCategories.length > 1) {
+                                  setSelectedCategories(selectedCategories.filter(cat => cat.name !== category.name));
+                                }
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <label
+                            htmlFor={`category-${category.name}`}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex-1"
+                          >
+                            {category.name} ({category.words.length} words)
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+                <div className="text-xs text-muted-foreground">
+                  {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'} selected
+                </div>
+              </div>
             )}
 
             {wordSource === "custom" && (
