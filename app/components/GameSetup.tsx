@@ -1,12 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { wordCategories, type WordCategory, getRandomWord } from "../data/wordLists";
+import {
+  wordCategories,
+  type WordCategory,
+  getRandomWord,
+  getWordWithHint,
+} from "../data/wordLists";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 
 interface HintMode {
@@ -30,16 +47,27 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
   const [playerCount, setPlayerCount] = useState(4);
   const [playerNames, setPlayerNames] = useState<string[]>([]);
   const [showNameEditor, setShowNameEditor] = useState(false);
-  const [wordSource, setWordSource] = useState<"preset" | "custom" | "ai">("preset");
-  const [selectedCategories, setSelectedCategories] = useState<WordCategory[]>([wordCategories[0]]);
+  const [wordSource, setWordSource] = useState<"preset" | "custom" | "ai">(
+    "preset"
+  );
+  const [selectedCategories, setSelectedCategories] = useState<WordCategory[]>([
+    wordCategories[0],
+  ]);
   const [customWord, setCustomWord] = useState("");
   const [customHint, setCustomHint] = useState("");
-  const [hintMode, setHintMode] = useState<HintMode>({ showCategory: false, showHint: true });
-  
+  const [hintMode, setHintMode] = useState<HintMode>({
+    showCategory: false,
+    showHint: true,
+  });
+
   // AI generation state
   const [aiCategory, setAiCategory] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
-  const [aiGenerated, setAiGenerated] = useState<{word: string; category: string; hint: string} | null>(null);
+  const [aiGenerated, setAiGenerated] = useState<{
+    word: string;
+    category: string;
+    hint: string;
+  } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [wordRevealed, setWordRevealed] = useState(false);
   const [previousWords, setPreviousWords] = useState<string[]>([]);
@@ -77,7 +105,7 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
 
   // Update player names array when player count changes
   useEffect(() => {
-    setPlayerNames(prev => {
+    setPlayerNames((prev) => {
       const newNames = [...prev];
       // Add empty names for new players
       while (newNames.length < playerCount) {
@@ -109,13 +137,13 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
       // Combine session words, history, and manual excludes
       const manualExcludes = manualExcludeWords
         .split(",")
-        .map(w => w.trim().toLowerCase())
-        .filter(w => w.length > 0);
-      
+        .map((w) => w.trim().toLowerCase())
+        .filter((w) => w.length > 0);
+
       const allExcludedWords = [
         ...previousWords,
         ...usedWordsHistory,
-        ...manualExcludes
+        ...manualExcludes,
       ];
 
       const response = await fetch("/api/generate-words", {
@@ -123,9 +151,9 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           category: aiCategory,
-          previousWords: allExcludedWords 
+          previousWords: allExcludedWords,
         }),
       });
 
@@ -135,14 +163,16 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
       }
 
       const data = await response.json();
-      
+
       // Add the new word to the session history
-      setPreviousWords(prev => [...prev, data.word]);
-      
+      setPreviousWords((prev) => [...prev, data.word]);
+
       setAiGenerated(data);
       setWordRevealed(false);
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : "Failed to generate word");
+      setAiError(
+        error instanceof Error ? error.message : "Failed to generate word"
+      );
     } finally {
       setAiGenerating(false);
     }
@@ -164,6 +194,11 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
       return;
     }
 
+    if (wordSource === "custom" && hintMode.showHint && !customHint.trim()) {
+      alert("Please enter a hint for the imposter");
+      return;
+    }
+
     if (wordSource === "ai" && !aiGenerated) {
       alert("Please generate a word first");
       return;
@@ -179,17 +214,39 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
         return;
       }
       // Randomly select a category from the selected ones
-      const randomCategory = selectedCategories[Math.floor(Math.random() * selectedCategories.length)];
+      const randomCategory =
+        selectedCategories[
+          Math.floor(Math.random() * selectedCategories.length)
+        ];
       word = getRandomWord(randomCategory);
       categoryName = randomCategory.name;
+      // Get the hint from the word list - should always exist
+      const wordWithHint = getWordWithHint(randomCategory, word);
+      if (!wordWithHint || !wordWithHint.hint) {
+        alert(
+          "Error: Could not find hint for selected word. Please try again."
+        );
+        return;
+      }
+      aiHint = wordWithHint.hint;
     } else if (wordSource === "custom") {
       word = customWord.trim();
       categoryName = "Custom";
       aiHint = customHint.trim() || undefined;
+      // If hint mode requires a hint, ensure one is provided
+      if (hintMode.showHint && !aiHint) {
+        alert("Please enter a hint for the imposter");
+        return;
+      }
     } else {
       word = aiGenerated!.word;
       categoryName = aiGenerated!.category;
       aiHint = aiGenerated!.hint;
+      // AI should always provide a hint
+      if (!aiHint) {
+        alert("Error: AI did not generate a hint. Please try again.");
+        return;
+      }
     }
 
     // Add word to used words history
@@ -198,13 +255,21 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
     localStorage.setItem("imposterUsedWords", JSON.stringify(newHistory));
 
     const imposterIndex = Math.floor(Math.random() * playerCount);
-    
+
     // Use custom names or default to "Player 1", "Player 2", etc.
-    const finalNames = playerNames.map((name, i) => 
-      name.trim() || `Player ${i + 1}`
+    const finalNames = playerNames.map(
+      (name, i) => name.trim() || `Player ${i + 1}`
     );
-    
-    onStartGame(playerCount, finalNames, word, imposterIndex, categoryName, hintMode, aiHint);
+
+    onStartGame(
+      playerCount,
+      finalNames,
+      word,
+      imposterIndex,
+      categoryName,
+      hintMode,
+      aiHint
+    );
   };
 
   return (
@@ -288,7 +353,8 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-muted-foreground">
-                    Select one or more categories (word will be randomly chosen from selected categories)
+                    Select one or more categories (word will be randomly chosen
+                    from selected categories)
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -317,20 +383,32 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
                 <Card>
                   <CardContent className="pt-4 max-h-60 overflow-y-auto space-y-2">
                     {wordCategories.map((category) => {
-                      const isSelected = selectedCategories.some(cat => cat.name === category.name);
+                      const isSelected = selectedCategories.some(
+                        (cat) => cat.name === category.name
+                      );
                       return (
-                        <div key={category.name} className="flex items-center space-x-2">
+                        <div
+                          key={category.name}
+                          className="flex items-center space-x-2"
+                        >
                           <input
                             type="checkbox"
                             id={`category-${category.name}`}
                             checked={isSelected}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedCategories([...selectedCategories, category]);
+                                setSelectedCategories([
+                                  ...selectedCategories,
+                                  category,
+                                ]);
                               } else {
                                 // Don't allow deselecting all categories
                                 if (selectedCategories.length > 1) {
-                                  setSelectedCategories(selectedCategories.filter(cat => cat.name !== category.name));
+                                  setSelectedCategories(
+                                    selectedCategories.filter(
+                                      (cat) => cat.name !== category.name
+                                    )
+                                  );
                                 }
                               }
                             }}
@@ -348,7 +426,8 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
                   </CardContent>
                 </Card>
                 <div className="text-xs text-muted-foreground">
-                  {selectedCategories.length} categor{selectedCategories.length === 1 ? 'y' : 'ies'} selected
+                  {selectedCategories.length} categor
+                  {selectedCategories.length === 1 ? "y" : "ies"} selected
                 </div>
               </div>
             )}
@@ -380,7 +459,7 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
                   }}
                   placeholder="Enter category or theme (e.g., Space, Medieval)..."
                 />
-                
+
                 <div className="flex gap-2">
                   <Button
                     onClick={handleGenerateAI}
@@ -401,7 +480,9 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
                   <Card>
                     <CardContent className="pt-4 pb-4 space-y-3">
                       <div>
-                        <Label className="text-xs">Manually Exclude Words</Label>
+                        <Label className="text-xs">
+                          Manually Exclude Words
+                        </Label>
                         <Input
                           value={manualExcludeWords}
                           onChange={(e) => updateExcludeWords(e.target.value)}
@@ -412,11 +493,13 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
                           Separate words with commas
                         </p>
                       </div>
-                      
+
                       {usedWordsHistory.length > 0 && (
                         <div>
                           <div className="flex items-center justify-between mb-2">
-                            <Label className="text-xs">Used Words History ({usedWordsHistory.length})</Label>
+                            <Label className="text-xs">
+                              Used Words History ({usedWordsHistory.length})
+                            </Label>
                             <Button
                               variant="ghost"
                               size="sm"
@@ -448,15 +531,23 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
                   <Card>
                     <CardContent className="pt-4 pb-4 space-y-3">
                       <p className="text-sm font-medium">✓ Generated!</p>
-                      
+
                       {!wordRevealed ? (
-                        <Button onClick={() => setWordRevealed(true)} className="w-full" variant="outline">
+                        <Button
+                          onClick={() => setWordRevealed(true)}
+                          className="w-full"
+                          variant="outline"
+                        >
                           Click to Reveal Word
                         </Button>
                       ) : (
                         <div className="space-y-2">
-                          <p className="text-lg font-bold">Word: {aiGenerated.word}</p>
-                          <p className="text-sm text-muted-foreground">Hint: {aiGenerated.hint}</p>
+                          <p className="text-lg font-bold">
+                            Word: {aiGenerated.word}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Hint: {aiGenerated.hint}
+                          </p>
                           <div className="flex gap-2">
                             <Button
                               onClick={() => setWordRevealed(false)}
@@ -491,7 +582,12 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
             <div className="space-y-2">
               <Button
                 variant={hintMode.showCategory ? "default" : "outline"}
-                onClick={() => setHintMode({ ...hintMode, showCategory: !hintMode.showCategory })}
+                onClick={() =>
+                  setHintMode({
+                    ...hintMode,
+                    showCategory: !hintMode.showCategory,
+                  })
+                }
                 className="w-full"
                 size="sm"
               >
@@ -499,7 +595,9 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
               </Button>
               <Button
                 variant={hintMode.showHint ? "default" : "outline"}
-                onClick={() => setHintMode({ ...hintMode, showHint: !hintMode.showHint })}
+                onClick={() =>
+                  setHintMode({ ...hintMode, showHint: !hintMode.showHint })
+                }
                 className="w-full"
                 size="sm"
               >
@@ -510,10 +608,10 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
               {hintMode.showCategory && hintMode.showHint
                 ? "Everyone sees category, imposter also gets a hint"
                 : hintMode.showCategory
-                ? "Everyone (including imposter) sees the category"
-                : hintMode.showHint
-                ? "Regular players see the word, imposter gets a hint"
-                : "Regular players see the word, imposter sees nothing"}
+                  ? "Everyone (including imposter) sees the category"
+                  : hintMode.showHint
+                    ? "Regular players see the word, imposter gets a hint"
+                    : "Regular players see the word, imposter sees nothing"}
             </p>
           </div>
 
@@ -530,7 +628,9 @@ export default function GameSetup({ onStartGame }: GameSetupProps) {
             <CardContent>
               <ul className="text-sm text-muted-foreground space-y-1">
                 <li>• Pass device to each player to view their role</li>
-                <li>• One player is the imposter (doesn&apos;t see the word)</li>
+                <li>
+                  • One player is the imposter (doesn&apos;t see the word)
+                </li>
                 <li>• Discuss and find the imposter!</li>
                 <li>• Imposter can try to guess the word</li>
               </ul>

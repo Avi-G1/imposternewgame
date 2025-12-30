@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -21,9 +21,6 @@ interface RoleRevealProps {
   onNext: () => void;
 }
 
-function getHint(word: string): string {
-  return `Starts with "${word[0].toUpperCase()}" (${word.length} letters)`;
-}
 
 export default function RoleReveal({
   playerCount,
@@ -36,34 +33,101 @@ export default function RoleReveal({
   aiHint,
   onNext,
 }: RoleRevealProps) {
-  const [revealed, setRevealed] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
+  const [hasReleased, setHasReleased] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const isImposter = currentPlayerIndex === imposterIndex;
   const playerName =
     playerNames[currentPlayerIndex] || `Player ${currentPlayerIndex + 1}`;
 
-  const handleReveal = () => {
-    setRevealed(true);
+  const handleHoldStart = (e: React.MouseEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement>) => {
+    // Verify the event target is actually the button
+    if (e.target !== buttonRef.current && !buttonRef.current?.contains(e.target as Node)) {
+      return;
+    }
+    // Only handle left mouse button (button 0) or touch events
+    if ('button' in e.nativeEvent && e.nativeEvent.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    setIsHolding(true);
+    setHasReleased(false);
+  };
+
+  const handleHoldEnd = (e?: React.MouseEvent<HTMLButtonElement> | React.TouchEvent<HTMLButtonElement>) => {
+    // Only handle left mouse button (button 0) or touch events if event is provided
+    if (e) {
+      if ('button' in e.nativeEvent && e.nativeEvent.button !== 0) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    // If we were holding, mark as released
+    setIsHolding(prev => {
+      if (prev) {
+        setHasReleased(true);
+        return false;
+      }
+      return prev;
+    });
   };
 
   const handleNext = () => {
-    setRevealed(false);
+    setIsHolding(false);
+    setHasReleased(false);
     onNext();
   };
 
-  if (!revealed) {
+  // Add global mouse up listener to catch releases outside the button
+  useEffect(() => {
+    if (isHolding) {
+      const handleGlobalMouseUp = () => {
+        setIsHolding(prev => {
+          if (prev) {
+            setHasReleased(true);
+            return false;
+          }
+          return prev;
+        });
+      };
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+      window.addEventListener('touchend', handleGlobalMouseUp);
+      return () => {
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+        window.removeEventListener('touchend', handleGlobalMouseUp);
+      };
+    }
+  }, [isHolding]);
+
+  // Show initial screen if not holding and not released
+  if (!isHolding && !hasReleased) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center space-y-8">
           <h2 className="text-6xl font-bold">{playerName}</h2>
           <p className="text-2xl text-muted-foreground">
-            Ready to see your role?
+            Hold to reveal your role
           </p>
           <Button
-            onClick={handleReveal}
+            ref={buttonRef}
+            onMouseDown={handleHoldStart}
+            onMouseUp={handleHoldEnd}
+            onMouseLeave={(e) => {
+              // Only end if we're actually holding and the mouse left the button
+              if (isHolding && buttonRef.current && !buttonRef.current.contains(e.relatedTarget as Node)) {
+                handleHoldEnd(e as React.MouseEvent<HTMLButtonElement>);
+              }
+            }}
+            onTouchStart={handleHoldStart}
+            onTouchEnd={handleHoldEnd}
+            onContextMenu={(e) => e.preventDefault()}
             size="lg"
-            className="text-2xl px-12 py-8"
+            className="text-2xl px-12 py-8 select-none touch-none active:scale-95 transition-transform"
+            type="button"
           >
-            Reveal My Role
+            Hold to Reveal
           </Button>
           <p className="text-muted-foreground text-lg">
             Make sure other players can&apos;t see the screen
@@ -108,14 +172,14 @@ export default function RoleReveal({
               </Card>
             )}
 
-            {showHintToImposter && (
+            {showHintToImposter && aiHint && (
               <Card>
                 <CardContent className="pt-6">
                   <p className="text-sm text-muted-foreground mb-2">
                     Your Hint:
                   </p>
                   <p className="text-4xl md:text-5xl font-bold">
-                    {aiHint || getHint(word)}
+                    {aiHint}
                   </p>
                 </CardContent>
               </Card>
@@ -162,19 +226,29 @@ export default function RoleReveal({
           </div>
         )}
 
-        <Button
-          onClick={handleNext}
-          size="lg"
-          className="text-2xl px-12 py-8 mt-8"
-        >
-          {currentPlayerIndex < playerCount - 1
-            ? "Pass to Next Player"
-            : "All Done"}
-        </Button>
+        {hasReleased && (
+          <>
+            <Button
+              onClick={handleNext}
+              size="lg"
+              className="text-2xl px-12 py-8 mt-8"
+            >
+              {currentPlayerIndex < playerCount - 1
+                ? "Next Player"
+                : "All Done"}
+            </Button>
 
-        <p className="text-muted-foreground mt-6 text-lg">
-          Remember your role and don&apos;t show anyone!
-        </p>
+            <p className="text-muted-foreground mt-6 text-lg">
+              Remember your role and don&apos;t show anyone!
+            </p>
+          </>
+        )}
+
+        {isHolding && !hasReleased && (
+          <p className="text-muted-foreground mt-6 text-lg">
+            Release to continue
+          </p>
+        )}
       </div>
     </div>
   );

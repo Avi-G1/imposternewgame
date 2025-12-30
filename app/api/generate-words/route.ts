@@ -53,7 +53,8 @@ ${excludeWordsText}
    - If the concept usually has two words (e.g., "Ice Cream"), pick the most distinct single word (e.g., "Gelato" or "Scoop").
    - No proper nouns unless the category specifically requires them.
 
-2. **The Hint**: Must be a SINGLE English word.
+2. **The Hint**: Must be EXACTLY ONE SINGLE English word (no spaces, no multiple words, no phrases).
+   - **CRITICAL**: The hint must be ONE WORD ONLY. Examples: "Jittery" ✅, "Very Jittery" ❌, "Morning Drink" ❌
    - **Mental Model**: Do not describe *what* the object is. Describe *where* you see it, *how* it makes you feel, or *what happens* when you use it.
    - **The "Imposter Test"**: If an imposter hears this hint, they should NOT be able to immediately guess the secret word.
    - **Valid Logic**: A person who knows the secret word must instantly nod and say "Ah, that makes sense."
@@ -118,6 +119,16 @@ Return ONLY a raw JSON string.
         if (!result.word || !result.hint) {
             return NextResponse.json(
                 { error: "Invalid response format from AI" },
+                { status: 500 }
+            );
+        }
+
+        // Validate that hint is a single word (no spaces, no hyphens that create multiple words)
+        const hintWords = result.hint.trim().split(/\s+/);
+        if (hintWords.length > 1) {
+            console.warn(`AI generated multi-word hint: "${result.hint}". Rejecting and requesting retry.`);
+            return NextResponse.json(
+                { error: "AI generated a multi-word hint. The hint must be a single word. Please try again." },
                 { status: 500 }
             );
         }
