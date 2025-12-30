@@ -85,8 +85,6 @@ Return ONLY a raw JSON string.
                 input: prompt,
                 reasoning: { effort: "medium" },
                 text: { verbosity: "low" },
-                temperature: 1.1,
-                top_p: 0.9,
             });
         } catch (apiError: any) {
             console.error("OpenAI API call failed:", {
